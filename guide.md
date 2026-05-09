@@ -1,0 +1,1 @@
+this is a inventory management software we will use sql lite for stock data saving, also to see the current stock details, 
