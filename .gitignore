@@ -2,3 +2,8 @@ venv
 .env
 __pycache__/
 *.pyc
+node_modules/
+dist/
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
