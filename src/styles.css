@@ -297,7 +297,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   min-height: 42px;
   width: 100%;
   border: 1px solid #d8d4cc;
@@ -305,6 +306,21 @@ select {
   background: #fffefa;
   color: #1f2933;
   padding: 9px 11px;
+}
+
+input:disabled,
+select:disabled {
+  background: #f0ede8;
+  color: #68736e;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+
+textarea {
+  min-height: 170px;
+  resize: vertical;
+  font-family: "Cascadia Code", Consolas, monospace;
+  line-height: 1.5;
 }
 
 .field-row {
@@ -315,6 +331,26 @@ select {
 
 .field-row.three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.existing-product-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid #b8d3c0;
+  border-radius: 8px;
+  background: #edf8ef;
+  padding: 12px 14px;
+}
+
+.existing-product-banner strong {
+  color: #275a37;
+  font-size: 15px;
+}
+
+.existing-product-banner span {
+  color: #3f7a55;
+  font-size: 13px;
 }
 
 .primary-action {
@@ -409,6 +445,49 @@ select {
   overflow-x: auto;
 }
 
+.text-action {
+  border: 0;
+  border-radius: 8px;
+  background: #eaf4f1;
+  color: #286357;
+  padding: 8px 11px;
+  font-weight: 800;
+}
+
+.admin-tools {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.admin-tools .name-search input {
+  width: 100%;
+}
+
+.secondary-action {
+  min-height: 44px;
+  border: 1px solid #d8d4cc;
+  border-radius: 8px;
+  background: #fbf8f2;
+  color: #243a34;
+  padding: 10px 16px;
+  font-weight: 800;
+}
+
+.table-summary {
+  margin-bottom: 10px;
+  color: #68736e;
+  font-size: 14px;
+}
+
+.admin-table-wrap {
+  max-height: 520px;
+  border: 1px solid #eee8df;
+  border-radius: 8px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -444,6 +523,10 @@ th {
   .two-column {
     grid-template-columns: 1fr;
     display: grid;
+  }
+
+  .admin-tools {
+    grid-template-columns: 1fr;
   }
 
   .page-grid {

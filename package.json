@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:web": "vite --host 0.0.0.0 --open",
+    "dev": "node scripts/stop-dev.js && concurrently \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:web": "vite",
     "dev:api": "node server/index.js",
+    "dev:stop": "node scripts/stop-dev.js",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --open"
   },

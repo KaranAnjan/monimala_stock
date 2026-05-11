@@ -1,5 +1,6 @@
 import express from "express";
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import initSqlJs from "sql.js";
 import { fileURLToPath } from "node:url";
@@ -56,8 +57,10 @@ run(`
     stock_qty INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
+  )
+`);
 
+run(`
   CREATE TABLE IF NOT EXISTS stock_movements (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     product_id INTEGER NOT NULL,
@@ -66,7 +69,7 @@ run(`
     note TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (product_id) REFERENCES products(id)
-  );
+  )
 `);
 
 const countProducts = get("SELECT COUNT(*) AS count FROM products")?.count || 0;
@@ -114,6 +117,7 @@ const productSelect = `
   created_at AS createdAt,
   updated_at AS updatedAt
 `;
+
 
 const toInt = (value, fallback = 0) => {
   const parsed = Number.parseInt(value, 10);
@@ -251,10 +255,14 @@ app.post("/api/stock/in", (req, res) => {
     run(
       `
         UPDATE products
-        SET stock_qty = stock_qty + ?, updated_at = CURRENT_TIMESTAMP
+        SET stock_qty = stock_qty + ?,
+            selling_price = ?,
+            cost_price = ?,
+            mrp = ?,
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `,
-      [quantity, product.id]
+      [quantity, toMoney(body.sellingPrice), toMoney(body.costPrice), toMoney(body.mrp), product.id]
     );
 
     run(
@@ -271,6 +279,7 @@ app.post("/api/stock/in", (req, res) => {
     res.json(updated);
   } catch (error) {
     run("ROLLBACK");
+    console.error("Stock IN error:", error.message);
     if (error.message === "MISSING_PRODUCT_DETAILS") {
       return res.status(400).json({ message: "New products need category and product name" });
     }
@@ -321,9 +330,7 @@ app.get("/api/admin/products", requireAdmin, (_req, res) => {
 
 const port = Number(process.env.PORT || 5050);
 const host = process.env.API_HOST || "0.0.0.0";
-const server = app.listen(port, host, () => {
-  console.log(`Stock API running at http://127.0.0.1:${port}`);
-});
+const server = http.createServer(app);
 
 server.on("error", (error) => {
   if (error.code === "EADDRINUSE") {
@@ -331,4 +338,8 @@ server.on("error", (error) => {
     process.exit(1);
   }
   throw error;
+});
+
+server.listen(port, host, () => {
+  console.log(`Stock API running at http://127.0.0.1:${port}`);
 });
