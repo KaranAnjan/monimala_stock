@@ -297,6 +297,7 @@ function App() {
                 selectedProduct={selectedProduct}
                 nameSearch={nameSearch}
                 setNameSearch={setNameSearch}
+                setCodeSearch={setCodeSearch}
                 matchedProducts={matchedProducts}
                 fillFromProduct={fillFromProduct}
               />
@@ -535,7 +536,7 @@ function InventoryIn({ stockForm, setStockForm, addStock, products, fillFromProd
   );
 }
 
-function InventoryCheck({ selectedProduct, nameSearch, setNameSearch, matchedProducts, fillFromProduct }) {
+function InventoryCheck({ selectedProduct, nameSearch, setNameSearch, setCodeSearch, matchedProducts, fillFromProduct }) {
   return (
     <section className="two-column">
       <section className="panel">
@@ -550,6 +551,9 @@ function InventoryCheck({ selectedProduct, nameSearch, setNameSearch, matchedPro
             onChange={(event) => setNameSearch(event.target.value)}
             placeholder="Search product list"
           />
+          {nameSearch && (
+            <button type="button" className="clear-btn" onClick={() => { setNameSearch(""); setCodeSearch(""); }}>&#x2715;</button>
+          )}
         </div>
         <div className="quick-list selectable">
           {matchedProducts.map((product) => (

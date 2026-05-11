@@ -145,6 +145,48 @@ h1 {
   background: transparent;
 }
 
+.scan-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  border: 1px solid #d8d4cc;
+  border-radius: 8px;
+  background: #fffdf9;
+  padding: 0 8px 0 13px;
+}
+
+.name-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  border: 1px solid #d8d4cc;
+  border-radius: 8px;
+  background: #fffdf9;
+  padding: 0 8px 0 13px;
+}
+
+.clear-btn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #68736e;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.clear-btn:hover {
+  background: #e5ded4;
+  color: #1f2933;
+}
+
 .scan-search button {
   border: 0;
   border-radius: 7px;
