@@ -602,3 +602,140 @@ th {
     width: 100%;
   }
 }
+
+.hidden-fields {
+  display: none;
+}
+
+.cost-hide {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4d5b55;
+  letter-spacing: 2px;
+  margin-left: 6px;
+}
+
+.stock-out-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  border: 1px solid #b8d3c0;
+  border-radius: 8px;
+  background: #edf8ef;
+  color: #275a37;
+  padding: 8px 14px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.stock-out-btn:hover:not(:disabled) {
+  background: #d4ead9;
+}
+
+.stock-out-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.batch-info {
+  font-size: 13px;
+  color: #1f2933;
+  padding: 10px 12px;
+  background: #edf8ef;
+  border: 1px solid #b8d3c0;
+  border-radius: 8px;
+  display: block;
+  width: 100%;
+}
+
+.batch-label strong {
+  color: #275a37;
+}
+
+.batch-label.muted {
+  color: #8c7a6a;
+  font-style: italic;
+}
+
+.batch-breakdown {
+  border: 1px solid #e5ded4;
+  border-radius: 8px;
+  background: #fbf8f2;
+  padding: 12px;
+  font-size: 13px;
+  display: grid;
+  gap: 8px;
+}
+
+.batch-breakdown strong {
+  color: #4d5b55;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.batch-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.batch-row-name {
+  font-weight: 700;
+  color: #1f2933;
+  min-width: 100px;
+}
+
+.batch-row-expiry {
+  color: #8c7a6a;
+}
+
+.batch-row-qty {
+  margin-left: auto;
+  font-weight: 700;
+  color: #2e7566;
+}
+
+.batch-select {
+  width: 100%;
+  min-height: 36px;
+}
+
+.stock-out-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stock-out-qty-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d8d4cc;
+  border-radius: 8px;
+  background: #fffefa;
+  padding: 0 8px;
+}
+
+.stock-out-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #68736e;
+}
+
+.stock-out-qty {
+  width: 50px;
+  min-height: 34px;
+  border: 0;
+  text-align: center;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 0;
+  background: transparent;
+}
+
+.stock-out-qty:focus {
+  outline: none;
+}

@@ -55,6 +55,8 @@ run(`
     mrp REAL NOT NULL DEFAULT 0,
     reorder_level INTEGER NOT NULL DEFAULT 5,
     stock_qty INTEGER NOT NULL DEFAULT 0,
+    batch_date TEXT DEFAULT '',
+    expiry_date TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
@@ -71,6 +73,40 @@ run(`
     FOREIGN KEY (product_id) REFERENCES products(id)
   )
 `);
+
+run(`
+  CREATE TABLE IF NOT EXISTS product_batches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL,
+    batch_no TEXT DEFAULT '',
+    expiry_date TEXT DEFAULT '',
+    quantity INTEGER NOT NULL DEFAULT 0,
+    selling_price REAL NOT NULL DEFAULT 0,
+    cost_price REAL NOT NULL DEFAULT 0,
+    mrp REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  )
+`);
+
+try { run("ALTER TABLE products ADD COLUMN batch_date TEXT DEFAULT ''"); } catch {}
+try { run("ALTER TABLE products ADD COLUMN expiry_date TEXT DEFAULT ''"); } catch {}
+
+const existingBatchesCount = get("SELECT COUNT(*) AS count FROM product_batches")?.count || 0;
+if (existingBatchesCount === 0) {
+  const productsWithStock = all("SELECT * FROM products WHERE stock_qty > 0");
+  if (productsWithStock.length > 0) {
+    run("BEGIN TRANSACTION");
+    productsWithStock.forEach((p) => {
+      run(
+        "INSERT INTO product_batches (product_id, batch_no, expiry_date, quantity, selling_price, cost_price, mrp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [p.id, p.batch_date || "", p.expiry_date || "", p.stock_qty, p.selling_price, p.cost_price, p.mrp, p.created_at]
+      );
+    });
+    run("COMMIT");
+    saveDb();
+  }
+}
 
 const countProducts = get("SELECT COUNT(*) AS count FROM products")?.count || 0;
 if (countProducts === 0) {
@@ -98,6 +134,16 @@ if (countProducts === 0) {
   saveDb();
 }
 
+const getProductWithBatches = (productCode) => {
+  const product = get(`SELECT ${productSelect} FROM products WHERE product_code = ?`, [productCode]);
+  if (!product) return null;
+  product.batches = all(
+    `SELECT id, batch_no AS batchNo, expiry_date AS expiryDate, quantity, selling_price AS sellingPrice, cost_price AS costPrice, mrp FROM product_batches WHERE product_id = ? ORDER BY created_at ASC`,
+    [product.id]
+  );
+  return product;
+};
+
 const app = express();
 app.use(express.json());
 
@@ -114,6 +160,8 @@ const productSelect = `
   mrp,
   reorder_level AS reorderLevel,
   stock_qty AS stockQty,
+  batch_date AS batchDate,
+  expiry_date AS expiryDate,
   created_at AS createdAt,
   updated_at AS updatedAt
 `;
@@ -155,7 +203,7 @@ app.get("/api/products", (req, res) => {
   const code = String(req.query.code || "").trim();
 
   if (code) {
-    const product = get(`SELECT ${productSelect} FROM products WHERE product_code = ?`, [code]);
+    const product = getProductWithBatches(code);
     return res.json(product ? [product] : []);
   }
 
@@ -235,8 +283,9 @@ app.post("/api/stock/in", (req, res) => {
         `
           INSERT INTO products (
             product_code, category, subcategory, product_name,
-            selling_price, cost_price, mrp, reorder_level, stock_qty, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+            selling_price, cost_price, mrp, reorder_level, stock_qty,
+            batch_date, expiry_date, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, CURRENT_TIMESTAMP)
         `,
         [
           productCode,
@@ -246,7 +295,9 @@ app.post("/api/stock/in", (req, res) => {
           toMoney(body.sellingPrice),
           toMoney(body.costPrice),
           toMoney(body.mrp),
-          toInt(body.reorderLevel, 5)
+          toInt(body.reorderLevel, 5),
+          String(body.batchDate || "").trim(),
+          String(body.expiryDate || "").trim()
         ]
       );
       product = get("SELECT * FROM products WHERE product_code = ?", [productCode]);
@@ -255,33 +306,123 @@ app.post("/api/stock/in", (req, res) => {
     run(
       `
         UPDATE products
-        SET stock_qty = stock_qty + ?,
-            selling_price = ?,
+        SET selling_price = ?,
             cost_price = ?,
             mrp = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `,
-      [quantity, toMoney(body.sellingPrice), toMoney(body.costPrice), toMoney(body.mrp), product.id]
+      [toMoney(body.sellingPrice), toMoney(body.costPrice), toMoney(body.mrp), product.id]
     );
 
+    const batchNo = String(body.batchDate || "").trim();
+    const expiryDate = String(body.expiryDate || "").trim();
+
+    const existingBatch = get("SELECT * FROM product_batches WHERE product_id = ? AND batch_no = ?", [product.id, batchNo]);
+
+    if (existingBatch) {
+      run(
+        "UPDATE product_batches SET quantity = quantity + ?, selling_price = ?, cost_price = ?, mrp = ?, expiry_date = ? WHERE id = ?",
+        [quantity, toMoney(body.sellingPrice), toMoney(body.costPrice), toMoney(body.mrp), expiryDate, existingBatch.id]
+      );
+    } else {
+      run(
+        "INSERT INTO product_batches (product_id, batch_no, expiry_date, quantity, selling_price, cost_price, mrp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [product.id, batchNo, expiryDate, quantity, toMoney(body.sellingPrice), toMoney(body.costPrice), toMoney(body.mrp)]
+      );
+    }
+
+    const totalQty = get("SELECT COALESCE(SUM(quantity), 0) AS total FROM product_batches WHERE product_id = ?", [product.id]);
+    run("UPDATE products SET stock_qty = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [totalQty.total, product.id]);
+
     run(
-      `
-        INSERT INTO stock_movements (product_id, movement_type, quantity, note)
-        VALUES (?, 'IN', ?, ?)
-      `,
+      "INSERT INTO stock_movements (product_id, movement_type, quantity, note) VALUES (?, 'IN', ?, ?)",
       [product.id, quantity, String(body.note || "")]
     );
     run("COMMIT");
     saveDb();
 
-    const updated = get(`SELECT ${productSelect} FROM products WHERE product_code = ?`, [productCode]);
+    const updated = getProductWithBatches(productCode);
     res.json(updated);
   } catch (error) {
     run("ROLLBACK");
     console.error("Stock IN error:", error.message);
     if (error.message === "MISSING_PRODUCT_DETAILS") {
       return res.status(400).json({ message: "New products need category and product name" });
+    }
+    res.status(500).json({ message: "Could not update stock" });
+  }
+});
+
+app.post("/api/stock/out", (req, res) => {
+  const body = req.body || {};
+  const productCode = String(body.productCode || "").trim();
+  const quantity = toInt(body.quantity, 1);
+
+  if (!productCode || quantity <= 0) {
+    return res.status(400).json({ message: "Product code and positive quantity are required" });
+  }
+
+  try {
+    run("BEGIN TRANSACTION");
+    const product = get("SELECT * FROM products WHERE product_code = ?", [productCode]);
+
+    if (!product) {
+      throw new Error("PRODUCT_NOT_FOUND");
+    }
+
+    if (product.stock_qty < quantity) {
+      throw new Error("INSUFFICIENT_STOCK");
+    }
+
+    const batchId = body.batchId;
+
+    if (batchId) {
+      const batch = get("SELECT * FROM product_batches WHERE id = ? AND product_id = ?", [batchId, product.id]);
+      if (!batch) {
+        throw new Error("BATCH_NOT_FOUND");
+      }
+      if (batch.quantity < quantity) {
+        throw new Error("INSUFFICIENT_BATCH_STOCK");
+      }
+      run("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?", [quantity, batchId]);
+    } else {
+      let remaining = quantity;
+      const batches = all("SELECT * FROM product_batches WHERE product_id = ? AND quantity > 0 ORDER BY created_at ASC", [product.id]);
+      for (const batch of batches) {
+        if (remaining <= 0) break;
+        const deduct = Math.min(remaining, batch.quantity);
+        run("UPDATE product_batches SET quantity = quantity - ? WHERE id = ?", [deduct, batch.id]);
+        remaining -= deduct;
+      }
+    }
+
+    const totalQty = get("SELECT COALESCE(SUM(quantity), 0) AS total FROM product_batches WHERE product_id = ?", [product.id]);
+    run("UPDATE products SET stock_qty = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [totalQty.total, product.id]);
+
+    run(
+      "INSERT INTO stock_movements (product_id, movement_type, quantity, note) VALUES (?, 'OUT', ?, ?)",
+      [product.id, quantity, String(body.note || "")]
+    );
+    run("COMMIT");
+    saveDb();
+
+    const updated = getProductWithBatches(productCode);
+    res.json(updated);
+  } catch (error) {
+    run("ROLLBACK");
+    console.error("Stock OUT error:", error.message);
+    if (error.message === "PRODUCT_NOT_FOUND") {
+      return res.status(404).json({ message: "Product not found" });
+    }
+    if (error.message === "INSUFFICIENT_STOCK") {
+      return res.status(400).json({ message: "Insufficient stock" });
+    }
+    if (error.message === "BATCH_NOT_FOUND") {
+      return res.status(400).json({ message: "Batch not found" });
+    }
+    if (error.message === "INSUFFICIENT_BATCH_STOCK") {
+      return res.status(400).json({ message: "Insufficient stock in selected batch" });
     }
     res.status(500).json({ message: "Could not update stock" });
   }

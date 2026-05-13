@@ -34,7 +34,16 @@ const emptyProduct = {
   costPrice: "",
   mrp: "",
   reorderLevel: 5,
-  stockQty: 0
+  stockQty: 0,
+  batchDate: "",
+  expiryDate: ""
+};
+
+const costCodeLetters = "BLACKHORSE";
+
+const encodeCostCode = (cost) => {
+  if (!cost && cost !== 0) return "";
+  return String(Math.round(Number(cost))).split("").map((d) => costCodeLetters[Number(d)] || "").join("");
 };
 
 async function request(path, options = {}) {
@@ -69,6 +78,8 @@ function App() {
   const [admin, setAdmin] = useState({ username: "admin", password: "" });
   const [adminToken, setAdminToken] = useState(localStorage.getItem("adminToken") || "");
   const [adminProducts, setAdminProducts] = useState([]);
+  const [stockOutQty, setStockOutQty] = useState(1);
+  const [selectedBatchId, setSelectedBatchId] = useState(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -190,8 +201,32 @@ function App() {
     }
   };
 
-  const fillFromProduct = (product) => {
-    setSelectedProduct(product);
+  const stockOut = async () => {
+    clearMessages();
+    if (!selectedProduct) return;
+    if (selectedProduct.batches?.length > 1 && !selectedBatchId) {
+      setError("Please select a batch to deduct from");
+      return;
+    }
+    try {
+      const qty = Math.min(stockOutQty, selectedProduct.stockQty);
+      const updated = await request("/stock/out", {
+        method: "POST",
+        body: JSON.stringify({ productCode: selectedProduct.productCode, quantity: qty, note: "Counter sale", batchId: selectedBatchId })
+      });
+      setNotice(`Stock has been updated for ${updated.productName}. Available quantity is ${updated.stockQty}.`);
+      setSelectedProduct(updated);
+      setStockOutQty(1);
+      await Promise.all([loadDashboard(), loadProducts()]);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  useEffect(() => { setStockOutQty(1); }, [selectedProduct]);
+  useEffect(() => { setSelectedBatchId(null); }, [selectedProduct?.productCode]);
+
+  const fillFromProduct = async (product) => {
     setNameSearch(product.productName);
     setCodeSearch(product.productCode);
     setStockForm((current) => ({
@@ -200,6 +235,12 @@ function App() {
       quantity: current.quantity || 1,
       note: current.note || ""
     }));
+    const data = asArray(await request(`/products?code=${encodeURIComponent(product.productCode)}`));
+    if (data.length > 0) {
+      setSelectedProduct(data[0]);
+    } else {
+      setSelectedProduct(product);
+    }
   };
 
   const loginAdmin = async (event) => {
@@ -300,6 +341,11 @@ function App() {
                 setCodeSearch={setCodeSearch}
                 matchedProducts={matchedProducts}
                 fillFromProduct={fillFromProduct}
+                stockOut={stockOut}
+                stockOutQty={stockOutQty}
+                setStockOutQty={setStockOutQty}
+                selectedBatchId={selectedBatchId}
+                setSelectedBatchId={setSelectedBatchId}
               />
             )}
             {activeTab === "in" && (
@@ -401,6 +447,8 @@ function Dashboard({ dashboard }) {
 }
 
 function InventoryIn({ stockForm, setStockForm, addStock, products, fillFromProduct, lookupProduct, selectedProduct }) {
+  const isExistingBatch = selectedProduct && stockForm.batchDate.trim() &&
+    selectedProduct.batches?.some((b) => b.batchNo === stockForm.batchDate.trim());
   return (
     <section className="two-column">
       <form className="panel form-panel" onSubmit={addStock}>
@@ -474,6 +522,27 @@ function InventoryIn({ stockForm, setStockForm, addStock, products, fillFromProd
           />
         </label>
 
+        <div className="field-row">
+          <label>
+            Batch
+            <input
+              value={stockForm.batchDate}
+              onChange={(event) => setStockForm({ ...stockForm, batchDate: event.target.value })}
+              placeholder="e.g. BATCH-001"
+            />
+          </label>
+          {stockForm.category === "Cosmetics" && (
+            <label>
+              Expiry
+              <input
+                type="date"
+                value={stockForm.expiryDate}
+                onChange={(event) => setStockForm({ ...stockForm, expiryDate: event.target.value })}
+              />
+            </label>
+          )}
+        </div>
+
         <div className="field-row three">
           <label>
             Selling price
@@ -482,6 +551,7 @@ function InventoryIn({ stockForm, setStockForm, addStock, products, fillFromProd
               min="0"
               value={stockForm.sellingPrice}
               onChange={(event) => setStockForm({ ...stockForm, sellingPrice: event.target.value })}
+              disabled={isExistingBatch}
             />
           </label>
           <label>
@@ -491,6 +561,7 @@ function InventoryIn({ stockForm, setStockForm, addStock, products, fillFromProd
               min="0"
               value={stockForm.costPrice}
               onChange={(event) => setStockForm({ ...stockForm, costPrice: event.target.value })}
+              disabled={isExistingBatch}
             />
           </label>
           <label>
@@ -500,6 +571,7 @@ function InventoryIn({ stockForm, setStockForm, addStock, products, fillFromProd
               min="0"
               value={stockForm.mrp}
               onChange={(event) => setStockForm({ ...stockForm, mrp: event.target.value })}
+              disabled={isExistingBatch}
             />
           </label>
         </div>
@@ -536,7 +608,11 @@ function InventoryIn({ stockForm, setStockForm, addStock, products, fillFromProd
   );
 }
 
-function InventoryCheck({ selectedProduct, nameSearch, setNameSearch, setCodeSearch, matchedProducts, fillFromProduct }) {
+function InventoryCheck({ selectedProduct, nameSearch, setNameSearch, setCodeSearch, matchedProducts, fillFromProduct, stockOut, stockOutQty, setStockOutQty, selectedBatchId, setSelectedBatchId }) {
+
+  const batches = selectedProduct?.batches || [];
+  const showBatchUI = batches.length > 1;
+
   return (
     <section className="two-column">
       <section className="panel">
@@ -574,11 +650,64 @@ function InventoryCheck({ selectedProduct, nameSearch, setNameSearch, setCodeSea
           <div className="product-card">
             <p className="pill">{selectedProduct.category} / {selectedProduct.subcategory || "General"}</p>
             <h3>{selectedProduct.productName}</h3>
-            <div className="code-chip"><Barcode size={16} /> {selectedProduct.productCode}</div>
+            <div className="code-chip"><Barcode size={16} /> {selectedProduct.productCode} / <span className="cost-hide">{encodeCostCode(selectedProduct.costPrice)}</span></div>
             <div className="price-grid">
               <div><span>Selling price</span><strong>{currency.format(selectedProduct.sellingPrice)}</strong></div>
               <div><span>MRP</span><strong>{currency.format(selectedProduct.mrp)}</strong></div>
               <div><span>Qty available</span><strong>{selectedProduct.stockQty}</strong></div>
+            </div>
+            <div className="batch-info">
+              {selectedProduct.batchDate || selectedProduct.expiryDate ? (
+                <span className="batch-label"><strong>Batch:</strong> {selectedProduct.batchDate || "-"} <strong>Exp:</strong> {selectedProduct.expiryDate || "-"}</span>
+              ) : (
+                <span className="batch-label muted">No batch set</span>
+              )}
+            </div>
+
+            {showBatchUI && (
+              <div className="batch-breakdown">
+                <strong>Batch breakdown</strong>
+                {batches.map((b) => (
+                  <div key={b.id} className="batch-row">
+                    <span className="batch-row-name">{b.batchNo || "Default"}</span>
+                    {b.expiryDate && <span className="batch-row-expiry">Exp: {b.expiryDate}</span>}
+                    <span className="batch-row-qty">Qty: {b.quantity}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="stock-out-row">
+              {showBatchUI && (
+                <select
+                  className="batch-select"
+                  value={selectedBatchId || ""}
+                  onChange={(e) => setSelectedBatchId(Number(e.target.value) || null)}
+                >
+                  <option value="">-- Choose batch --</option>
+                  {batches
+                    .filter((b) => b.quantity > 0)
+                    .map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.batchNo || "Default"} ({b.quantity} units{b.expiryDate ? `, Exp: ${b.expiryDate}` : ""})
+                      </option>
+                    ))}
+                </select>
+              )}
+              <div className="stock-out-qty-wrap">
+                <span className="stock-out-label">Qty</span>
+                <input
+                  type="number"
+                  min="1"
+                  max={selectedProduct.stockQty}
+                  className="stock-out-qty"
+                  value={stockOutQty}
+                  onChange={(e) => setStockOutQty(Math.min(Number(e.target.value) || 1, selectedProduct.stockQty))}
+                />
+              </div>
+              <button className="stock-out-btn" onClick={stockOut} disabled={selectedProduct.stockQty <= 0}>
+                <PackageCheck size={16} /> Sold
+              </button>
             </div>
           </div>
         ) : (
