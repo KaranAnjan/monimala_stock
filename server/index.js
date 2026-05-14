@@ -469,6 +469,69 @@ app.get("/api/admin/products", requireAdmin, (_req, res) => {
   res.json(all(`SELECT ${productSelect} FROM products ORDER BY category, product_name`));
 });
 
+app.get("/api/admin/products/:id", requireAdmin, (req, res) => {
+  const id = toInt(req.params.id);
+  const product = get(`SELECT ${productSelect} FROM products WHERE id = ?`, [id]);
+  if (!product) return res.status(404).json({ message: "Product not found" });
+  product.batches = all(
+    `SELECT id, batch_no AS batchNo, expiry_date AS expiryDate, quantity, selling_price AS sellingPrice, cost_price AS costPrice, mrp FROM product_batches WHERE product_id = ? ORDER BY created_at ASC`,
+    [id]
+  );
+  res.json(product);
+});
+
+app.put("/api/admin/products/:id", requireAdmin, (req, res) => {
+  const id = toInt(req.params.id);
+  const body = req.body;
+  const product = get("SELECT * FROM products WHERE id = ?", [id]);
+  if (!product) return res.status(404).json({ message: "Product not found" });
+
+  run(
+    `UPDATE products SET product_name = ?, category = ?, subcategory = ?, reorder_level = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    [
+      String(body.productName || "").trim(),
+      String(body.category || "").trim(),
+      String(body.subcategory || "").trim(),
+      toInt(body.reorderLevel, 5),
+      id
+    ]
+  );
+  saveDb();
+  const updated = getProductWithBatches(product.product_code);
+  res.json(updated);
+});
+
+app.put("/api/admin/products/:id/batches/:batchId", requireAdmin, (req, res) => {
+  const id = toInt(req.params.id);
+  const batchId = toInt(req.params.batchId);
+  const body = req.body;
+
+  const batch = get("SELECT * FROM product_batches WHERE id = ? AND product_id = ?", [batchId, id]);
+  if (!batch) return res.status(404).json({ message: "Batch not found" });
+
+  run(
+    `UPDATE product_batches SET batch_no = ?, expiry_date = ?, quantity = ?, selling_price = ?, cost_price = ?, mrp = ? WHERE id = ?`,
+    [
+      String(body.batchNo || "").trim(),
+      String(body.expiryDate || "").trim(),
+      toInt(body.quantity, 0),
+      toMoney(body.sellingPrice),
+      toMoney(body.costPrice),
+      toMoney(body.mrp),
+      batchId
+    ]
+  );
+
+  const totalQty = get("SELECT COALESCE(SUM(quantity), 0) AS total FROM product_batches WHERE product_id = ?", [id]);
+  run("UPDATE products SET stock_qty = ?, selling_price = ?, cost_price = ?, mrp = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [totalQty.total, toMoney(body.sellingPrice), toMoney(body.costPrice), toMoney(body.mrp), id]);
+  saveDb();
+
+  const prod = get("SELECT product_code FROM products WHERE id = ?", [id]);
+  const updated = getProductWithBatches(prod.product_code);
+  res.json(updated);
+});
+
 const port = Number(process.env.PORT || 5050);
 const host = process.env.API_HOST || "0.0.0.0";
 const server = http.createServer(app);

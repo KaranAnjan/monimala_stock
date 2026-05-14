@@ -48,8 +48,8 @@ const encodeCostCode = (cost) => {
 
 async function request(path, options = {}) {
   const response = await fetch(`${apiBase}${path}`, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options
+    ...options,
+    headers: { "Content-Type": "application/json", ...options.headers }
   });
   const text = await response.text();
   let data = {};
@@ -204,12 +204,14 @@ function App() {
   const stockOut = async () => {
     clearMessages();
     if (!selectedProduct) return;
-    if (selectedProduct.batches?.length > 1 && !selectedBatchId) {
+    const selectedBatch = selectedProduct.batches?.find((b) => b.id === selectedBatchId);
+    const maxQty = selectedBatch?.quantity ?? selectedProduct.stockQty;
+    if (!selectedBatch && selectedProduct.batches?.length > 0) {
       setError("Please select a batch to deduct from");
       return;
     }
     try {
-      const qty = Math.min(stockOutQty, selectedProduct.stockQty);
+      const qty = Math.min(stockOutQty, maxQty);
       const updated = await request("/stock/out", {
         method: "POST",
         body: JSON.stringify({ productCode: selectedProduct.productCode, quantity: qty, note: "Counter sale", batchId: selectedBatchId })
@@ -224,7 +226,14 @@ function App() {
   };
 
   useEffect(() => { setStockOutQty(1); }, [selectedProduct]);
-  useEffect(() => { setSelectedBatchId(null); }, [selectedProduct?.productCode]);
+  useEffect(() => {
+    if (selectedProduct?.batches) {
+      const valid = selectedProduct.batches.find((b) => b.quantity > 0) || selectedProduct.batches[0];
+      setSelectedBatchId(valid ? valid.id : null);
+    } else {
+      setSelectedBatchId(null);
+    }
+  }, [selectedProduct?.productCode]);
 
   const fillFromProduct = async (product) => {
     setNameSearch(product.productName);
@@ -255,6 +264,19 @@ function App() {
     const rows = await request("/admin/products", { headers: { "x-admin-token": data.token } });
     setAdminProducts(asArray(rows));
     setNotice("Admin login successful.");
+  };
+
+  const refreshAdminProducts = async () => {
+    try {
+      const data = await request("/admin/products", { headers: { "x-admin-token": adminToken } });
+      setAdminProducts(asArray(data));
+    } catch (err) {
+      if (err.message === "Admin login required") {
+        localStorage.removeItem("adminToken");
+        setAdminToken("");
+      }
+      setError(err.message);
+    }
   };
 
   return (
@@ -291,6 +313,11 @@ function App() {
             </>
           )}
         </nav>
+        {isAdminRoute && (
+          <button className="exit-btn" onClick={() => { window.location.pathname = "/"; }}>
+            Exit to Main
+          </button>
+        )}
       </aside>
 
       <main className="content">
@@ -321,7 +348,7 @@ function App() {
         )}
 
         {isAdminRoute ? (
-          <AdminArea
+            <AdminArea
             activeTab={activeTab}
             dashboard={dashboard}
             admin={admin}
@@ -330,6 +357,9 @@ function App() {
             adminToken={adminToken}
             setAdminToken={setAdminToken}
             adminProducts={adminProducts}
+            refreshAdminProducts={refreshAdminProducts}
+            setError={setError}
+            setNotice={setNotice}
           />
         ) : (
           <>
@@ -611,7 +641,10 @@ function InventoryIn({ stockForm, setStockForm, addStock, products, fillFromProd
 function InventoryCheck({ selectedProduct, nameSearch, setNameSearch, setCodeSearch, matchedProducts, fillFromProduct, stockOut, stockOutQty, setStockOutQty, selectedBatchId, setSelectedBatchId }) {
 
   const batches = selectedProduct?.batches || [];
-  const showBatchUI = batches.length > 1;
+  const selectedBatch = batches.find((b) => b.id === selectedBatchId);
+  const displayPrice = selectedBatch?.sellingPrice ?? selectedProduct?.sellingPrice;
+  const displayMrp = selectedBatch?.mrp ?? selectedProduct?.mrp;
+  const displayQty = selectedBatch?.quantity ?? selectedProduct?.stockQty;
 
   return (
     <section className="two-column">
@@ -651,61 +684,43 @@ function InventoryCheck({ selectedProduct, nameSearch, setNameSearch, setCodeSea
             <p className="pill">{selectedProduct.category} / {selectedProduct.subcategory || "General"}</p>
             <h3>{selectedProduct.productName}</h3>
             <div className="code-chip"><Barcode size={16} /> {selectedProduct.productCode} / <span className="cost-hide">{encodeCostCode(selectedProduct.costPrice)}</span></div>
-            <div className="price-grid">
-              <div><span>Selling price</span><strong>{currency.format(selectedProduct.sellingPrice)}</strong></div>
-              <div><span>MRP</span><strong>{currency.format(selectedProduct.mrp)}</strong></div>
-              <div><span>Qty available</span><strong>{selectedProduct.stockQty}</strong></div>
-            </div>
-            <div className="batch-info">
-              {selectedProduct.batchDate || selectedProduct.expiryDate ? (
-                <span className="batch-label"><strong>Batch:</strong> {selectedProduct.batchDate || "-"} <strong>Exp:</strong> {selectedProduct.expiryDate || "-"}</span>
-              ) : (
-                <span className="batch-label muted">No batch set</span>
-              )}
+
+            <div className="batch-selector">
+              <select
+                value={selectedBatchId || ""}
+                onChange={(e) => setSelectedBatchId(Number(e.target.value) || null)}
+              >
+                {batches.length === 0 ? (
+                  <option value="">Default</option>
+                ) : (
+                  batches.map((b) => (
+                    <option key={b.id} value={b.id} disabled={b.quantity <= 0}>
+                      {b.batchNo || "Default"} ({b.quantity} units{b.expiryDate ? `, Exp: ${b.expiryDate}` : ""})
+                    </option>
+                  ))
+                )}
+              </select>
             </div>
 
-            {showBatchUI && (
-              <div className="batch-breakdown">
-                <strong>Batch breakdown</strong>
-                {batches.map((b) => (
-                  <div key={b.id} className="batch-row">
-                    <span className="batch-row-name">{b.batchNo || "Default"}</span>
-                    {b.expiryDate && <span className="batch-row-expiry">Exp: {b.expiryDate}</span>}
-                    <span className="batch-row-qty">Qty: {b.quantity}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="price-grid">
+              <div><span>Selling price</span><strong>{currency.format(displayPrice)}</strong></div>
+              <div><span>MRP</span><strong>{currency.format(displayMrp)}</strong></div>
+              <div><span>Qty available</span><strong>{displayQty}</strong></div>
+            </div>
 
             <div className="stock-out-row">
-              {showBatchUI && (
-                <select
-                  className="batch-select"
-                  value={selectedBatchId || ""}
-                  onChange={(e) => setSelectedBatchId(Number(e.target.value) || null)}
-                >
-                  <option value="">-- Choose batch --</option>
-                  {batches
-                    .filter((b) => b.quantity > 0)
-                    .map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.batchNo || "Default"} ({b.quantity} units{b.expiryDate ? `, Exp: ${b.expiryDate}` : ""})
-                      </option>
-                    ))}
-                </select>
-              )}
               <div className="stock-out-qty-wrap">
                 <span className="stock-out-label">Qty</span>
                 <input
                   type="number"
                   min="1"
-                  max={selectedProduct.stockQty}
+                  max={displayQty}
                   className="stock-out-qty"
                   value={stockOutQty}
-                  onChange={(e) => setStockOutQty(Math.min(Number(e.target.value) || 1, selectedProduct.stockQty))}
+                  onChange={(e) => setStockOutQty(Math.min(Number(e.target.value) || 1, displayQty))}
                 />
               </div>
-              <button className="stock-out-btn" onClick={stockOut} disabled={selectedProduct.stockQty <= 0}>
+              <button className="stock-out-btn" onClick={stockOut} disabled={displayQty <= 0}>
                 <PackageCheck size={16} /> Sold
               </button>
             </div>
@@ -718,7 +733,7 @@ function InventoryCheck({ selectedProduct, nameSearch, setNameSearch, setCodeSea
   );
 }
 
-function AdminArea({ activeTab, dashboard, admin, setAdmin, loginAdmin, adminToken, setAdminToken, adminProducts }) {
+function AdminArea({ activeTab, dashboard, admin, setAdmin, loginAdmin, adminToken, setAdminToken, adminProducts, refreshAdminProducts, setError, setNotice }) {
   if (!adminToken) {
     return (
       <AdminLogin admin={admin} setAdmin={setAdmin} loginAdmin={loginAdmin} />
@@ -728,7 +743,7 @@ function AdminArea({ activeTab, dashboard, admin, setAdmin, loginAdmin, adminTok
   return activeTab === "dashboard" ? (
     <Dashboard dashboard={dashboard} />
   ) : (
-    <Admin adminToken={adminToken} setAdminToken={setAdminToken} adminProducts={adminProducts} />
+    <Admin adminToken={adminToken} setAdminToken={setAdminToken} adminProducts={adminProducts} refreshAdminProducts={refreshAdminProducts} setError={setError} setNotice={setNotice} />
   );
 }
 
@@ -760,8 +775,11 @@ function AdminLogin({ admin, setAdmin, loginAdmin }) {
   );
 }
 
-function Admin({ adminToken, setAdminToken, adminProducts }) {
+function Admin({ adminToken, setAdminToken, adminProducts, refreshAdminProducts, setError, setNotice }) {
   const [adminSearch, setAdminSearch] = useState("");
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   const logout = () => {
     localStorage.removeItem("adminToken");
@@ -825,6 +843,67 @@ function Admin({ adminToken, setAdminToken, adminProducts }) {
     URL.revokeObjectURL(url);
   };
 
+  const startEditing = async (product) => {
+    try {
+      const data = await request(`/admin/products/${product.id}`, { headers: { "x-admin-token": adminToken } });
+      setEditingProduct(data);
+      setEditForm({
+        productName: data.productName,
+        category: data.category,
+        subcategory: data.subcategory,
+        reorderLevel: data.reorderLevel,
+        batches: (data.batches || []).map((b) => ({ ...b }))
+      });
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const updateEditField = (field, value) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const updateEditBatch = (index, field, value) => {
+    setEditForm((prev) => {
+      const batches = [...prev.batches];
+      batches[index] = { ...batches[index], [field]: value };
+      return { ...prev, batches };
+    });
+  };
+
+  const saveEdit = async () => {
+    setEditSaving(true);
+    try {
+      await request(`/admin/products/${editingProduct.id}`, {
+        method: "PUT",
+        headers: { "x-admin-token": adminToken },
+        body: JSON.stringify(editForm)
+      });
+      if (editForm.batches) {
+        for (const batch of editForm.batches) {
+          await request(`/admin/products/${editingProduct.id}/batches/${batch.id}`, {
+            method: "PUT",
+            headers: { "x-admin-token": adminToken },
+            body: JSON.stringify(batch)
+          });
+        }
+      }
+      setEditingProduct(null);
+      setEditForm(null);
+      await refreshAdminProducts();
+      setNotice("Product updated successfully.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingProduct(null);
+    setEditForm(null);
+  };
+
   return (
     <section className="panel">
       <div className="panel-header">
@@ -866,6 +945,7 @@ function Admin({ adminToken, setAdminToken, adminProducts }) {
                 <th>Selling</th>
                 <th>Cost</th>
                 <th>MRP</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -879,12 +959,88 @@ function Admin({ adminToken, setAdminToken, adminProducts }) {
                   <td>{currency.format(product.sellingPrice)}</td>
                   <td>{currency.format(product.costPrice)}</td>
                   <td>{currency.format(product.mrp)}</td>
+                  <td><button className="text-action" onClick={() => startEditing(product)}>Edit</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </>
+
+      {editingProduct && editForm && (
+        <div className="modal-overlay" onClick={cancelEdit}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Edit product</h2>
+              <button className="modal-close" onClick={cancelEdit}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <div className="field-row">
+                <label>
+                  Product code
+                  <input value={editingProduct.productCode} disabled />
+                </label>
+                <label>
+                  Product name
+                  <input value={editForm.productName} onChange={(e) => updateEditField("productName", e.target.value)} />
+                </label>
+              </div>
+              <div className="field-row">
+                <label>
+                  Category
+                  <select value={editForm.category} onChange={(e) => updateEditField("category", e.target.value)}>
+                    {categories.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Subcategory
+                  <input value={editForm.subcategory} onChange={(e) => updateEditField("subcategory", e.target.value)} />
+                </label>
+              </div>
+              <div className="field-row">
+                <label>
+                  Reorder level
+                  <input type="number" min="0" value={editForm.reorderLevel} onChange={(e) => updateEditField("reorderLevel", Number(e.target.value))} />
+                </label>
+                <label>
+                  Stock qty
+                  <input value={editingProduct.stockQty} disabled />
+                </label>
+              </div>
+
+              <h3 className="batch-section-title">Batch details</h3>
+              <div className="batch-edit-table">
+                <div className="batch-edit-header">
+                  <span>Batch no</span>
+                  <span>Expiry</span>
+                  <span>Qty</span>
+                  <span>Selling</span>
+                  <span>Cost</span>
+                  <span>MRP</span>
+                </div>
+                {editForm.batches.length === 0 ? (
+                  <div className="batch-edit-empty">No batches found for this product.</div>
+                ) : (
+                  editForm.batches.map((batch, i) => (
+                    <div key={batch.id} className="batch-edit-row">
+                      <input value={batch.batchNo} onChange={(e) => updateEditBatch(i, "batchNo", e.target.value)} placeholder="Default" />
+                      <input type="date" value={batch.expiryDate} onChange={(e) => updateEditBatch(i, "expiryDate", e.target.value)} />
+                      <input type="number" min="0" value={batch.quantity} onChange={(e) => updateEditBatch(i, "quantity", Number(e.target.value))} />
+                      <input type="number" min="0" value={batch.sellingPrice} onChange={(e) => updateEditBatch(i, "sellingPrice", e.target.value)} />
+                      <input type="number" min="0" value={batch.costPrice} onChange={(e) => updateEditBatch(i, "costPrice", e.target.value)} />
+                      <input type="number" min="0" value={batch.mrp} onChange={(e) => updateEditBatch(i, "mrp", e.target.value)} />
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="secondary-action" onClick={cancelEdit}>Cancel</button>
+              <button className="primary-action" onClick={saveEdit} disabled={editSaving}>{editSaving ? "Saving..." : "Save"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

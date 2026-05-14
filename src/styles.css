@@ -36,6 +36,11 @@ button {
   background: #16231f;
   color: #f8faf8;
   padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
 }
 
 .brand {
@@ -89,6 +94,19 @@ nav button.active,
 nav button:hover {
   background: #243a34;
   color: #ffffff;
+}
+
+.exit-btn {
+  margin-top: auto;
+  border: 1px solid #e8d5b5 !important;
+  background: #1a1a1a !important;
+  color: #e8d5b5 !important;
+}
+
+.exit-btn:hover {
+  background: #b84d31 !important;
+  color: #ffffff !important;
+  border-color: #b84d31 !important;
 }
 
 .content {
@@ -698,7 +716,8 @@ th {
   color: #2e7566;
 }
 
-.batch-select {
+.batch-select,
+.batch-selector select {
   width: 100%;
   min-height: 36px;
 }
@@ -738,4 +757,114 @@ th {
 
 .stock-out-qty:focus {
   outline: none;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 41, 51, 0.5);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.modal-content {
+  background: #fffdf9;
+  border-radius: 12px;
+  max-width: 720px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px rgba(31, 41, 51, 0.25);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+}
+
+.modal-header h2 {
+  font-size: 20px;
+}
+
+.modal-close {
+  border: 0;
+  background: transparent;
+  font-size: 28px;
+  color: #68736e;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.modal-close:hover {
+  color: #1f2933;
+}
+
+.modal-body {
+  padding: 16px 24px 0;
+  overflow-y: auto;
+  display: grid;
+  gap: 14px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px 20px;
+}
+
+.batch-section-title {
+  font-size: 15px;
+  color: #4d5b55;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid #eee8df;
+}
+
+.batch-edit-table {
+  display: grid;
+  gap: 6px;
+}
+
+.batch-edit-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr 60px 80px 80px 80px;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #68736e;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 0 2px;
+}
+
+.batch-edit-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 60px 80px 80px 80px;
+  gap: 6px;
+}
+
+.batch-edit-row input {
+  min-height: 34px;
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+.batch-edit-empty {
+  color: #68736e;
+  font-size: 13px;
+  font-style: italic;
+  padding: 12px 2px;
+}
+
+@media (max-width: 640px) {
+  .batch-edit-header,
+  .batch-edit-row {
+    grid-template-columns: 1fr 1fr;
+  }
 }
