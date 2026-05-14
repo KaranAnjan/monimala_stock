@@ -46,6 +46,11 @@ const encodeCostCode = (cost) => {
   return String(Math.round(Number(cost))).split("").map((d) => costCodeLetters[Number(d)] || "").join("");
 };
 
+const decodeCostCode = (code) => {
+  if (!code) return "";
+  return code.split("").map((ch) => String(costCodeLetters.indexOf(ch))).filter((d) => d !== "-1").join("");
+};
+
 async function request(path, options = {}) {
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
@@ -301,6 +306,9 @@ function App() {
               <button className={activeTab === "stock" ? "active" : ""} onClick={() => setActiveTab("stock")}>
                 <ShieldCheck size={18} /> All Stock Details
               </button>
+              <button className={activeTab === "code" ? "active" : ""} onClick={() => setActiveTab("code")}>
+                <Lock size={18} /> Cost Code
+              </button>
             </>
           ) : (
             <>
@@ -401,7 +409,8 @@ function tabTitle(activeTab) {
     dashboard: "Dashboard",
     in: "Inventory In",
     check: "Inventory Checking",
-    stock: "All Stock Details"
+    stock: "All Stock Details",
+    code: "Cost Code"
   }[activeTab];
 }
 
@@ -740,10 +749,93 @@ function AdminArea({ activeTab, dashboard, admin, setAdmin, loginAdmin, adminTok
     );
   }
 
-  return activeTab === "dashboard" ? (
-    <Dashboard dashboard={dashboard} />
-  ) : (
-    <Admin adminToken={adminToken} setAdminToken={setAdminToken} adminProducts={adminProducts} refreshAdminProducts={refreshAdminProducts} setError={setError} setNotice={setNotice} />
+  if (activeTab === "dashboard") return <Dashboard dashboard={dashboard} />;
+  if (activeTab === "code") return <CostCode />;
+  return <Admin adminToken={adminToken} setAdminToken={setAdminToken} adminProducts={adminProducts} refreshAdminProducts={refreshAdminProducts} setError={setError} setNotice={setNotice} />;
+}
+
+function CostCode() {
+  const [input, setInput] = useState("");
+  const [mode, setMode] = useState("encode");
+
+  const mapping = costCodeLetters.split("").map((ch, i) => ({ digit: i, letter: ch }));
+
+  const result = mode === "encode"
+    ? encodeCostCode(input)
+    : decodeCostCode(input.toUpperCase());
+
+  return (
+    <section className="page-grid">
+      <section className="panel wide">
+        <div className="panel-header">
+          <h2>Cost code cipher</h2>
+          <span>BLACKHORSE encoding</span>
+        </div>
+        <p className="cost-code-desc">
+          Cost prices are hidden in product codes using a simple letter cipher.
+          Each digit 0-9 maps to a unique letter from the word <strong>BLACKHORSE</strong>.
+          Only the owner/staff who know the cipher can decode the actual cost.
+        </p>
+
+        <div className="cost-code-table-wrap">
+          <table className="cost-code-table">
+            <thead>
+              <tr><th>Digit</th><th>Letter</th></tr>
+            </thead>
+            <tbody>
+              {mapping.map((m) => (
+                <tr key={m.digit}>
+                  <td className="code-digit">{m.digit}</td>
+                  <td className="code-letter">{m.letter}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel cost-code-converter">
+        <div className="panel-header">
+          <h2>Converter</h2>
+          <span>Encode / Decode</span>
+        </div>
+
+        <div className="mode-toggle">
+          <button className={mode === "encode" ? "active" : ""} onClick={() => setMode("encode")}>Encode</button>
+          <button className={mode === "decode" ? "active" : ""} onClick={() => setMode("decode")}>Decode</button>
+        </div>
+
+        <label>
+          {mode === "encode" ? "Cost price (number)" : "Cipher text (letters)"}
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={mode === "encode" ? "e.g. 145" : "e.g. LKS"}
+          />
+        </label>
+
+        <label>
+          Result
+          <input value={result} readOnly className="code-result" />
+        </label>
+
+        <div className="code-examples">
+          <strong>Examples</strong>
+          <div className="code-example-row" onClick={() => { setInput("145"); setMode("encode"); }}>
+            <span>145</span><span className="arrow">&rarr;</span><span>LKS</span>
+          </div>
+          <div className="code-example-row" onClick={() => { setInput("299"); setMode("encode"); }}>
+            <span>299</span><span className="arrow">&rarr;</span><span>LEE</span>
+          </div>
+          <div className="code-example-row" onClick={() => { setInput("LKS"); setMode("decode"); }}>
+            <span>LKS</span><span className="arrow">&rarr;</span><span>145</span>
+          </div>
+          <div className="code-example-row" onClick={() => { setInput("HORSE"); setMode("decode"); }}>
+            <span>HORSE</span><span className="arrow">&rarr;</span><span>50782</span>
+          </div>
+        </div>
+      </section>
+    </section>
   );
 }
 
